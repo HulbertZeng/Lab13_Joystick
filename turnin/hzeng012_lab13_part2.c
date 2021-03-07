@@ -1,13 +1,13 @@
  /* Author: Hulbert Zeng
  * Partner(s) Name (if applicable):  
  * Lab Section: 021
- * Assignment: Lab #13  Exercise #3
+ * Assignment: Lab #13  Exercise #2
  * Exercise Description: [optional - include for your own benefit]
  *
  * I acknowledge all content contained herein, excluding template or example
  * code, is my own original work.
  *
- *  Demo Link: Youtube URL>
+ *  Demo Link: https://youtu.be/T8eTBSdTnSc
  */ 
 #include <avr/io.h>
 #ifdef _SIMULATE_
@@ -50,7 +50,6 @@ void transmit_data(unsigned char data, unsigned char gnds) {
 // shared task variables
 unsigned short row = 0xF7;
 unsigned short pattern = 0x10;
-unsigned short LED_time = 0;
 
 enum control { rest, right, left };
 // task variables
@@ -62,56 +61,24 @@ int control(int state) {
             if(x > 500 && x < 550) {
                 state = rest;
             } else if(x < 500) {
-                if(x > 450) {
-                    LED_time = 19;
-                } else if(x > 350) {
-                    LED_time = 9;
-                } else if(x > 250) {
-                    LED_time = 4;
-                } else {
-                    LED_time = 1;
-                }
                 state = right;
-            } else if(x > 550) {
-                if(x < 600) {
-                    LED_time = 19;
-                } else if(x < 700) {
-                    LED_time = 9;
-                } else if(x < 800) {
-                    LED_time = 4;
-                } else {
-                    LED_time = 1;
-                }
+            } else{
                 state = left;
             }
             break;
         case right:
-            if(x > 500 && x < 550) {
-                state = rest;
-            } else if(LED_time == 0) {
-                pattern = pattern >> 1;
-                if(pattern < 0x01) {
-                    pattern = 0x80;
-                }
-                state = rest;
-            } else {
-                --LED_time;
-                state = right;
+            pattern = pattern >> 1;
+            if(pattern < 0x01) {
+                pattern = 0x80;
             }
+            state = rest;
             break;
         case left:
-            if(x > 500 && x < 550) {
-                state = rest;
-            } else if(LED_time == 0) {
-                pattern = pattern << 1;
-                if(pattern > 0x80) {
-                    pattern = 0x01;
-                }
-                state = rest;
-            } else {
-                --LED_time;
-                state = left;
+            pattern = pattern << 1;
+            if(pattern > 0x80) {
+                pattern = 0x01;
             }
+            state = rest;
             break;
         default: state = rest; break;
     }
