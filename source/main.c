@@ -1,13 +1,13 @@
  /* Author: Hulbert Zeng
  * Partner(s) Name (if applicable):  
  * Lab Section: 021
- * Assignment: Lab #13  Exercise #3
+ * Assignment: Lab #13  Exercise #4
  * Exercise Description: [optional - include for your own benefit]
  *
  * I acknowledge all content contained herein, excluding template or example
  * code, is my own original work.
  *
- *  Demo Link: Youtube URL>
+ *  Demo Link: 
  */ 
 #include <avr/io.h>
 #ifdef _SIMULATE_
@@ -47,73 +47,99 @@ void transmit_data(unsigned char data, unsigned char gnds) {
     PORTD = 0x00;
 }
 
-// shared task variables
-unsigned short row = 0xF7;
-unsigned short pattern = 0x10;
-unsigned short LED_time = 0;
+// Pins on PORTA are used as input for A2D conversion
+    //    The default channel is 0 (PA0)
+    // The value of pinNum determines the pin on PORTA
+    //    used for A2D conversion
+    // Valid values range between 0 and 7, where the value
+    //    represents the desired pin for A2D conversion
+void Set_A2D_Pin(unsigned char pinNum) {
+    ADMUX = (pinNum <= 0x07) ? pinNum : ADMUX;
+    // Allow channel to stabilize
+    static unsigned char i = 0;
+    for ( i=0; i<15; i++ ) { asm("nop"); } 
+}
 
-enum control { rest, right, left };
+
+// shared task variables
+unsigned short row = 0xDF;
+unsigned short pattern = 0x10;
+
+enum horizontal { rest, right, left };
 // task variables
 
-int control(int state) {
+int horizontal(int state) {
+    Set_A2D_Pin(0);
+
+    TimerSet(1);
+    while(!TimerFlag);
+    TimerFlag = 0;
+
     unsigned short x = ADC;
     switch(state) {
-        case rest: 
-            if(x > 500 && x < 550) {
-                state = rest;
-            } else if(x < 500) {
-                if(x > 450) {
-                    LED_time = 19;
-                } else if(x > 350) {
-                    LED_time = 9;
-                } else if(x > 250) {
-                    LED_time = 4;
-                } else {
-                    LED_time = 1;
-                }
+        case rest:  
+            if(x < 500) {
                 state = right;
-            } else if(x > 550) {
-                if(x < 600) {
-                    LED_time = 19;
-                } else if(x < 700) {
-                    LED_time = 9;
-                } else if(x < 800) {
-                    LED_time = 4;
-                } else {
-                    LED_time = 1;
-                }
+            }
+            if(x > 550) {
                 state = left;
             }
             break;
         case right:
-            if(x > 500 && x < 550) {
-                state = rest;
-            } else if(LED_time == 0) {
+            if(pattern > 0x01) {
                 pattern = pattern >> 1;
-                if(pattern < 0x01) {
-                    pattern = 0x80;
-                }
-                state = rest;
-            } else {
-                --LED_time;
-                state = right;
             }
+            state = rest;
             break;
         case left:
-            if(x > 500 && x < 550) {
-                state = rest;
-            } else if(LED_time == 0) {
+            if(pattern < 0x80) {
                 pattern = pattern << 1;
-                if(pattern > 0x80) {
-                    pattern = 0x01;
-                }
-                state = rest;
-            } else {
-                --LED_time;
-                state = left;
             }
+            state = rest;
             break;
         default: state = rest; break;
+    }
+
+    return state;
+}
+
+
+enum vertical { wait, up, down };
+// task variables
+
+int vertical(int state) {
+    Set_A2D_Pin(1);
+
+    TimerSet(1);
+    while(!TimerFlag);
+    TimerFlag = 0;
+
+    unsigned short x = ADC;
+    switch(state) {
+        static signed char y = 0;
+        case wait: 
+            if(x < 500) {
+                state = up;
+            }
+            if(x > 600) {
+                state = down;
+            }
+            break;
+        case up:
+            if(y < 2) {
+                row = (row >> 1) | 0x80;
+                ++y;
+            }
+            state = wait;
+            break;
+        case down:
+            if(y > -2) {
+                row = (row << 1) | 0x01;
+                --y;
+            }
+            state = wait;
+            break;
+        default: state = wait; break;
     }
 
     return state;
@@ -137,21 +163,27 @@ int main(void) {
     DDRC = 0xFF; PORTC = 0x00;
     DDRD = 0xFF; PORTD = 0x00;
     /* Insert your solution below */
-    static task task1, task2;
-    task *tasks[] = { &task1, &task2 };
+    static task task1, task2, task3;
+    task *tasks[] = { &task1, &task2, &task3 };
     const unsigned short numTasks = sizeof(tasks)/sizeof(*tasks);
     const char start = -1;
-    // LED matrix contol
+    // LED horizontal control
     task1.state = start;
     task1.period = 50;
     task1.elapsedTime = task1.period;
-    task1.TickFct = &control;
+    task1.TickFct = &horizontal;
 
-    // LED matrix display
+    // LED vertical control
     task2.state = start;
     task2.period = 50;
     task2.elapsedTime = task2.period;
-    task2.TickFct = &display;
+    task2.TickFct = &vertical;
+
+    // LED display
+    task3.state = start;
+    task3.period = 25;
+    task3.elapsedTime = task3.period;
+    task3.TickFct = &display;
 
     unsigned short i;
 
@@ -171,6 +203,8 @@ int main(void) {
                 tasks[i]->elapsedTime = 0;
             }
             tasks[i]->elapsedTime += GCD;
+
+            TimerSet(GCD);
         }
         while(!TimerFlag);
         TimerFlag = 0;
